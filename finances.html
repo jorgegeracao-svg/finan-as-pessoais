@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f1117" />
+  <title>Finanças Pessoais</title>
+  <link rel="manifest"
+    href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Fina%C3%A7as%20Pessoais%22%2C%22short_name%22%3A%22Fina%C3%A7as%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22theme_color%22%3A%22%230f1117%22%2C%22background_color%22%3A%22%230f1117%22%7D" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: #0f1117;
+      color: #fff;
+      font-family: 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+
+    button {
+      -webkit-appearance: none;
+    }
+
+    /* install banner */
+    #installBanner {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #1a1d27;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 18px;
+      z-index: 100;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #installBanner.show {
+      display: flex;
+    }
+
+    #installBanner .ib-icon {
+      font-size: 26px;
+    }
+
+    #installBanner .ib-text {
+      flex: 1;
+      font-size: 13px;
+      color: #fff;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    #installBanner .ib-text span {
+      display: block;
+      font-size: 11px;
+      color: #6b7280;
+      font-weight: 400;
+      margin-top: 2px;
+    }
+
+    #installBanner button {
+      background: #22c55e;
+      border: none;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #installBanner .ib-close {
+      background: none;
+      border: none;
+      color: #4b5563;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Install Banner -->
+  <div id="installBanner">
+    <div class="ib-icon">💰</div>
+    <div class="ib-text">Adicione à sua tela inicial<span>Use como um app no seu celular</span></div>
+    <button id="installBtn">Instalar</button>
+    <button class="ib-close" id="closeBanner">✕</button>
+  </div>
+
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script>
+    // ─── PWA Install prompt ─────────────────────
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      deferredPrompt = e;
+      document.getElementById('installBanner').classList.add('show');
+    });
+    document.getElementById('installBtn').addEventListener('click', () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => {
+          document.getElementById('installBanner').classList.remove('show');
+        });
+        deferredPrompt = null;
+      }
+    });
+    document.getElementById('closeBanner').addEventListener('click', () => {
+      document.getElementById('installBanner').classList.remove('show');
+    });
+    // iOS hint
+    if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone) {
+      document.getElementById('installBanner').classList.add('show');
+      document.getElementById('installBtn').textContent = 'Como instalar';
+      document.getElementById('installBtn').onclick = () => alert('Toque no botão compartilhar (⬆) e depois em "Adicionar à tela de início"');
+    }
+
+    // ─── DATA ───────────────────────────────────
+    const CATEGORIES_IN = [
+      { name: "Salário", icon: "💼" },
+      { name: "Freelance", icon: "💻" },
+      { name: "Investimentos", icon: "📈" },
+      { name: "Presentes", icon: "🎁" },
+      { name: "Outros", icon: "💰" }
+    ];
+    const CATEGORIES_OUT = [
+      { name: "Alimentação", icon: "🍔" },
+      { name: "Transporte", icon: "🚗" },
+      { name: "Moradia", icon: "🏠" },
+      { name: "Saúde", icon: "🏥" },
+      { name: "Lazer", icon: "🎮" },
+      { name: "Compras", icon: "🛍️" },
+      { name: "Educação", icon: "📚" },
+      { name: "Outros", icon: "💸" }
+    ];
+    const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const MONTHS_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const PAYMENT_METHODS = [
+      { name: "Banco Bradesco", icon: "🏦" },
+      { name: "Banco do Brasil", icon: "🏦" },
+      { name: "Banco Inter", icon: "🧡" },
+      { name: "Caixa Econômica", icon: "🏦" },
+      { name: "Crédito Nubank", icon: "💳" }
+    ];
+    const ADMIN_USER = { email: "admin@finance.com", password: "admin123", name: "Admin", avatar: "A", since: "01/2026" };
+    const SAMPLE_TX = [];
+
+    // ─── EXCEL EXPORT ───────────────────────────
+    function exportExcel(transactions, user) {
+      if (!window.XLSX) {
+        alert('Biblioteca XLSX não carregada. Tente novamente.');
+        return;
+      }
+      const now = new Date();
+      const monthMap = {};
+      transactions.forEach(t => {
+        const d = new Date(t.date + "T12:00:00");
+        const k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+        monthMap[k] = monthMap[k] || { i: 0, o: 0 };
+        t.type === "in" ? monthMap[k].i += t.amount : monthMap[k].o += t.amount;
+      });
+      const resumo = [["Mês", "Entradas (R$)", "Saídas (R$)", "Saldo (R$)"]];
+      Object.keys(monthMap).sort().reverse().forEach(k => {
+        const p = k.split("-");
+        resumo.push([
+          MONTHS_SHORT[parseInt(p[1]) - 1] + " " + p[0],
+          monthMap[k].i,
+          monthMap[k].o,
+          monthMap[k].i - monthMap[k].o
+        ]);
+      });
+      const tI = transactions.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+      const tO = transactions.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+      resumo.push(["TOTAL", tI, tO, tI - tO]);
+
+      const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const txRows = [["#", "Data", "Tipo", "Descrição", "Valor (R$)", "Categoria"]];
+      sorted.forEach((t, i) => txRows.push([
+        i + 1,
+        t.date,
+        t.type === "in" ? "Entrada" : "Saída",
+        t.description,
+        t.amount,
+        t.category
+      ]));
+
+      const catMap = {};
+      transactions.forEach(t => {
+        catMap[t.category] = catMap[t.category] || { i: 0, o: 0 };
+        t.type === "in" ? catMap[t.category].i += t.amount : catMap[t.category].o += t.amount;
+      });
+      const catRows = [["Categoria", "Entradas (R$)", "Saídas (R$)", "Saldo (R$)"]];
+      Object.keys(catMap).sort().forEach(c => catRows.push([
+        c,
+        catMap[c].i,
+        catMap[c].o,
+        catMap[c].i - catMap[c].o
+      ]));
+
+      const ws1 = XLSX.utils.aoa_to_sheet(resumo);
+      const ws2 = XLSX.utils.aoa_to_sheet(txRows);
+      const ws3 = XLSX.utils.aoa_to_sheet(catRows);
+
+      ws1["!cols"] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+      ws2["!cols"] = [{ wch: 5 }, { wch: 14 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 18 }];
+      ws3["!cols"] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws1, "Resumo");
+      XLSX.utils.book_append_sheet(wb, ws2, "Transações");
+      XLSX.utils.book_append_sheet(wb, ws3, "Por Categoria");
+
+      const filename = "Relatorio_" + user.name.replace(/\s+/g, '_') + "_" +
+        now.getFullYear() + String(now.getMonth() + 1).padStart(2, "0") + ".xlsx";
+      XLSX.writeFile(wb, filename);
+    }
+
+    // ─── STYLES ─────────────────────────────────
+    const S = {
+      authRoot: { minHeight: "100vh", maxWidth: 430, margin: "0 auto", background: "#0f1117", color: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 28px", position: "relative", overflow: "hidden" },
+      authG1: { position: "absolute", top: -160, left: -100, width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle,rgba(34,197,94,0.22) 0%,transparent 70%)", pointerEvents: "none" },
+      authG2: { position: "absolute", bottom: -120, right: -80, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle,rgba(59,130,246,0.15) 0%,transparent 70%)", pointerEvents: "none" },
+      authLogo: { position: "relative", zIndex: 1, width: 68, height: 68, borderRadius: 22, background: "linear-gradient(135deg,#22c55e,#16a34a)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, boxShadow: "0 8px 32px rgba(34,197,94,0.35)", marginBottom: 18 },
+      authTitle: { position: "relative", zIndex: 1, fontSize: 27, fontWeight: 700, marginBottom: 3, textAlign: "center" },
+      authSub: { position: "relative", zIndex: 1, fontSize: 13, color: "#6b7280", marginBottom: 28, textAlign: "center" },
+      authCard: { position: "relative", zIndex: 1, width: "100%", background: "#1a1d27", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 20, padding: "26px 22px" },
+      authLabel: { fontSize: 10.5, color: "#4b5563", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5, display: "block" },
+      authInput: { width: "100%", background: "#111318", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 10, padding: "11px 14px", color: "#fff", fontSize: 16, outline: "none", boxSizing: "border-box", marginBottom: 12 },
+      authBtn: { width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#fff", fontSize: 16, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 18px rgba(34,197,94,0.35)", marginTop: 4 },
+      authErr: { fontSize: 12, color: "#ef4444", background: "#ef444410", border: "1px solid #ef444430", borderRadius: 8, padding: "8px 12px", marginBottom: 12, textAlign: "center" },
+      authSwitch: { position: "relative", zIndex: 1, marginTop: 16, textAlign: "center", fontSize: 14, color: "#6b7280" },
+      authSwitchBtn: { background: "none", border: "none", color: "#22c55e", fontWeight: 600, cursor: "pointer", fontSize: 14, padding: 0 },
+
+      root: { minHeight: "100vh", maxWidth: 430, margin: "0 auto", background: "#0f1117", color: "#fff", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" },
+      glowA: { position: "absolute", top: -120, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(34,197,94,0.18) 0%,transparent 70%)", pointerEvents: "none", zIndex: 0 },
+      glowB: { position: "absolute", top: 80, right: -100, width: 280, height: 280, borderRadius: "50%", background: "radial-gradient(circle,rgba(239,68,68,0.12) 0%,transparent 70%)", pointerEvents: "none", zIndex: 0 },
+
+      header: { position: "relative", zIndex: 1, padding: "56px 24px 6px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" },
+      headerTitle: { fontSize: 12.5, fontWeight: 500, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1.4, marginBottom: 2 },
+      headerGreet: { fontSize: 24, fontWeight: 700 },
+      avatar: { width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg,#22c55e,#16a34a)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, cursor: "pointer" },
+
+      monthNav: { position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px 2px" },
+      monthArrow: { background: "none", border: "none", color: "#6b7280", fontSize: 24, cursor: "pointer", width: 40, height: 40, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" },
+      monthArrowDis: { background: "none", border: "none", color: "#2a2d35", fontSize: 24, cursor: "default", width: 40, height: 40, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" },
+      monthCenter: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 },
+      monthName: { fontSize: 18, fontWeight: 700, letterSpacing: -0.3 },
+      monthMeta: { display: "flex", alignItems: "center", gap: 6 },
+      monthYear: { fontSize: 12, color: "#4b5563", fontWeight: 500 },
+      monthBadge: { fontSize: 9, fontWeight: 600, background: "#22c55e18", color: "#22c55e", padding: "2px 7px", borderRadius: 6, textTransform: "uppercase", letterSpacing: 0.6 },
+
+      balCard: { position: "relative", zIndex: 1, margin: "8px 24px 0", background: "linear-gradient(135deg,#1a1d27,#16181f)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 20, padding: "20px 22px" },
+      balLabel: { fontSize: 11, color: "#6b7280", fontWeight: 500, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 },
+      balValue: { fontSize: 30, fontWeight: 700, letterSpacing: -0.5 },
+      balRow: { display: "flex", gap: 10, marginTop: 16 },
+      balPill: c => ({ flex: 1, background: c + "12", border: "1px solid " + c + "30", borderRadius: 12, padding: "9px 12px" }),
+      pillLabel: { fontSize: 10.5, color: "#6b7280", fontWeight: 500, marginBottom: 2, display: "flex", alignItems: "center", gap: 5 },
+      pillDot: c => ({ width: 7, height: 7, borderRadius: "50%", background: c, display: "inline-block" }),
+      pillVal: c => ({ fontSize: 16, fontWeight: 700, color: c }),
+
+      listWrap: { position: "relative", zIndex: 1, flex: 1, overflowY: "auto", padding: "14px 24px 90px" },
+      dateHdr: { fontSize: 11, fontWeight: 600, color: "#4b5563", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6, marginTop: 12 },
+      txCard: { display: "flex", alignItems: "center", gap: 11, background: "#161820", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 13, padding: "10px 13px", marginBottom: 6 },
+      txIcon: { width: 40, height: 40, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 },
+      txInfo: { flex: 1, minWidth: 0 },
+      txDesc: { fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+      txCat: { fontSize: 10.5, color: "#4b5563", marginTop: 1 },
+      txRight: { textAlign: "right" },
+      txSign: i => ({ fontSize: 10.5, color: i ? "#22c55e88" : "#ef444488" }),
+      txAmt: i => ({ fontSize: 15, fontWeight: 700, color: i ? "#22c55e" : "#ef4444" }),
+      emptyWrap: { textAlign: "center", padding: "60px 0 30px" },
+      emptyIcon: { fontSize: 44, marginBottom: 12, opacity: 0.4 },
+      emptyText: { fontSize: 15, color: "#4b5563", fontWeight: 500 },
+      emptySub: { fontSize: 12, color: "#374151", marginTop: 3 },
+
+      fab: { position: "fixed", bottom: 72, left: "50%", transform: "translateX(-50%)", width: 60, height: 60, borderRadius: 30, background: "linear-gradient(135deg,#22c55e,#16a34a)", boxShadow: "0 6px 28px rgba(34,197,94,0.4)", border: "none", color: "#fff", fontSize: 28, fontWeight: 300, cursor: "pointer", zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center" },
+
+      bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#12141a", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "space-around", padding: "10px 0 22px", zIndex: 10 },
+      navBtn: a => ({ background: "none", border: "none", color: a ? "#22c55e" : "#4b5563", fontSize: 11, fontWeight: a ? 600 : 500, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }),
+      navIcon: a => ({ fontSize: 20, color: a ? "#22c55e" : "#4b5563" }),
+
+      addOverlay: { position: "fixed", inset: 0, background: "#0f1117", zIndex: 20, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto" },
+      addHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "56px 24px 14px" },
+      addBack: { background: "none", border: "none", color: "#6b7280", fontSize: 24, cursor: "pointer", padding: 6 },
+      addTitle: { fontSize: 17, fontWeight: 700 },
+      addOk: a => ({ background: "none", border: "none", color: a ? "#22c55e" : "#374151", fontSize: 15, fontWeight: 600, cursor: a ? "pointer" : "default", padding: 6 }),
+      typeToggle: { display: "flex", margin: "0 24px", background: "#161820", borderRadius: 12, padding: 4, gap: 4 },
+      typeBtn: (a, c) => ({ flex: 1, padding: "11px 0", borderRadius: 9, border: "none", background: a ? c + "15" : "transparent", color: a ? c : "#6b7280", fontSize: 14, fontWeight: 600, cursor: "pointer" }),
+      amtWrap: { padding: "30px 24px 6px", textAlign: "center" },
+      amtPfx: { fontSize: 22, color: "#4b5563", fontWeight: 500 },
+      amtInput: { background: "none", border: "none", outline: "none", color: "#fff", fontSize: 48, fontWeight: 700, textAlign: "center", width: "100%", letterSpacing: -1, caretColor: "#22c55e" },
+      fSection: { padding: "0 24px", marginTop: 18 },
+      fLabel: { fontSize: 11, color: "#4b5563", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 7 },
+      fInput: { width: "100%", background: "#161820", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 11, padding: "12px 15px", color: "#fff", fontSize: 16, outline: "none", boxSizing: "border-box" },
+      catGrid: { display: "flex", flexWrap: "wrap", gap: 7 },
+      catBtn: a => ({ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, background: a ? "#22c55e15" : "#161820", border: "1px solid " + (a ? "#22c55e40" : "rgba(255,255,255,0.06)"), color: a ? "#22c55e" : "#9ca3af", fontSize: 12, fontWeight: 500, cursor: "pointer" }),
+      addCatBtn: { display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, background: "#3b82f615", border: "1px solid #3b82f640", color: "#3b82f6", fontSize: 12, fontWeight: 500, cursor: "pointer" },
+      newCatModal: { background: "#1a1d27", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "14px", marginTop: 8 },
+      newCatInputWrap: { display: "flex", gap: 8, marginBottom: 8 },
+      newCatIconInput: { width: 50, background: "#161820", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px", color: "#fff", fontSize: 20, textAlign: "center", outline: "none" },
+      newCatNameInput: { flex: 1, background: "#161820", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 12px", color: "#fff", fontSize: 13, outline: "none" },
+      newCatBtnWrap: { display: "flex", gap: 6 },
+      newCatSaveBtn: { flex: 1, padding: "8px", borderRadius: 8, border: "none", background: "#22c55e", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+      newCatCancelBtn: { flex: 1, padding: "8px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#6b7280", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+      subBtn: a => ({ margin: "26px 24px", padding: "15px", borderRadius: 13, border: "none", background: a ? "linear-gradient(135deg,#22c55e,#16a34a)" : "#1e2028", color: a ? "#fff" : "#4b5563", fontSize: 16, fontWeight: 600, cursor: a ? "pointer" : "default", boxShadow: a ? "0 4px 18px rgba(34,197,94,0.3)" : "none" }),
+
+      profWrap: { position: "relative", zIndex: 1, flex: 1, overflowY: "auto", padding: "0 24px 90px" },
+      profHdr: { textAlign: "center", padding: "48px 0 22px" },
+      profAvatar: { width: 80, height: 80, borderRadius: 24, background: "linear-gradient(135deg,#22c55e,#16a34a)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 700, margin: "0 auto 14px", boxShadow: "0 6px 24px rgba(34,197,94,0.3)" },
+      profName: { fontSize: 22, fontWeight: 700, marginBottom: 3 },
+      profEmail: { fontSize: 13, color: "#6b7280" },
+      profCard: { background: "#161820", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: "18px", marginBottom: 12 },
+      profCardTitle: { fontSize: 11, color: "#4b5563", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 },
+      profRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" },
+      profRowL: { fontSize: 13, color: "#9ca3af" },
+      profRowV: { fontSize: 13, fontWeight: 600 },
+      statsRow: { display: "flex", gap: 9, marginBottom: 14 },
+      statCard: { flex: 1, background: "#161820", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: "14px 10px", textAlign: "center" },
+      statNum: { fontSize: 18, fontWeight: 700, marginBottom: 2 },
+      statLbl: { fontSize: 10, color: "#4b5563", textTransform: "uppercase", letterSpacing: 0.4 },
+      logoutBtn: { width: "100%", padding: "14px", borderRadius: 12, border: "1px solid rgba(239,68,68,0.3)", background: "transparent", color: "#ef4444", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 8 }
+    };
+
+    // ─── APP COMPONENT ──────────────────────────
+    const { useState, useEffect, createElement: h } = React;
+
+    function App() {
+      const now = new Date();
+      const [authScreen, setAuthScreen] = useState("login");
+      const [currentUser, setCurrentUser] = useState(null);
+      const [users, setUsers] = useState([ADMIN_USER]);
+      const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+      const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "", confirmPassword: "" });
+      const [authError, setAuthError] = useState("");
+      const [screen, setScreen] = useState("home");
+      const [transactions, setTransactions] = useState(SAMPLE_TX);
+      const [addType, setAddType] = useState("out");
+      const [form, setForm] = useState({ amount: "", description: "", category: null, date: "", paymentMethod: null });
+      const [selCat, setSelCat] = useState(null);
+      const [selPayment, setSelPayment] = useState(null);
+      const [selMonth, setSelMonth] = useState(now.getMonth());
+      const [selYear, setSelYear] = useState(now.getFullYear());
+      const [customCategoriesIn, setCustomCategoriesIn] = useState([]);
+      const [customCategoriesOut, setCustomCategoriesOut] = useState([]);
+      const [showNewCategory, setShowNewCategory] = useState(false);
+      const [newCategoryForm, setNewCategoryForm] = useState({ name: "", icon: "📌" });
+      const today = now.toISOString().split("T")[0];
+
+      useEffect(() => {
+        if (screen === "add") {
+          setForm({ amount: "", description: "", category: null, date: today, paymentMethod: null });
+          setSelCat(null);
+          setSelPayment(null);
+          setShowNewCategory(false);
+          setNewCategoryForm({ name: "", icon: "📌" });
+        }
+      }, [screen, addType, today]);
+
+      // Auth
+      const doLogin = () => {
+        const u = users.find(u => u.email === loginForm.email && u.password === loginForm.password);
+        if (u) {
+          setCurrentUser(u);
+          setAuthError("");
+        } else {
+          setAuthError("Email ou senha incorretos.");
+        }
+      };
+
+      const doSignup = () => {
+        if (!signupForm.name || !signupForm.email || !signupForm.password) {
+          setAuthError("Preencha todos os campos.");
+          return;
+        }
+        if (signupForm.password !== signupForm.confirmPassword) {
+          setAuthError("Senhas não coincidem.");
+          return;
+        }
+        if (users.find(u => u.email === signupForm.email)) {
+          setAuthError("Email já está em uso.");
+          return;
+        }
+        const nu = {
+          name: signupForm.name,
+          email: signupForm.email,
+          password: signupForm.password,
+          avatar: signupForm.name[0].toUpperCase(),
+          since: String(now.getMonth() + 1).padStart(2, "0") + "/" + now.getFullYear()
+        };
+        setUsers(p => [...p, nu]);
+        setCurrentUser(nu);
+        setAuthError("");
+        setSignupForm({ name: "", email: "", password: "", confirmPassword: "" });
+      };
+
+      // Month
+      const goP = () => {
+        if (selMonth === 0) {
+          setSelMonth(11);
+          setSelYear(y => y - 1);
+        } else {
+          setSelMonth(m => m - 1);
+        }
+      };
+
+      const goN = () => {
+        if (selMonth === 11) {
+          setSelMonth(0);
+          setSelYear(y => y + 1);
+        } else {
+          setSelMonth(m => m + 1);
+        }
+      };
+
+      const isCur = selMonth === now.getMonth() && selYear === now.getFullYear();
+      const isFut = selYear > now.getFullYear() || (selYear === now.getFullYear() && selMonth > now.getMonth());
+
+      const filtered = transactions.filter(t => {
+        const d = new Date(t.date + "T12:00:00");
+        return d.getMonth() === selMonth && d.getFullYear() === selYear;
+      });
+
+      const tIn = filtered.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+      const tOut = filtered.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+      const bal = tIn - tOut;
+      const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const grouped = {};
+      sorted.forEach(t => {
+        const d = new Date(t.date + "T12:00:00");
+        const k = d.getDate().toString().padStart(2, "0") + " " + MONTHS_SHORT[d.getMonth()];
+        grouped[k] = grouped[k] || [];
+        grouped[k].push(t);
+      });
+
+      const cats = addType === "in" ? [...CATEGORIES_IN, ...customCategoriesIn] : [...CATEGORIES_OUT, ...customCategoriesOut];
+
+      const addNewCategory = () => {
+        if (!newCategoryForm.name.trim()) return;
+        const newCat = { name: newCategoryForm.name.trim(), icon: newCategoryForm.icon };
+        if (addType === "in") {
+          setCustomCategoriesIn(prev => [...prev, newCat]);
+        } else {
+          setCustomCategoriesOut(prev => [...prev, newCat]);
+        }
+        setSelCat(newCat.name);
+        setShowNewCategory(false);
+        setNewCategoryForm({ name: "", icon: "📌" });
+      };
+
+      const doAdd = () => {
+        if (!form.amount || !form.description || !selCat || !selPayment) return;
+        const cat = cats.find(c => c.name === selCat);
+        const payment = PAYMENT_METHODS.find(p => p.name === selPayment);
+        setTransactions(p => [
+          {
+            id: Date.now(),
+            type: addType,
+            amount: parseFloat(form.amount),
+            category: cat.name,
+            icon: cat.icon,
+            description: form.description,
+            date: form.date || today,
+            paymentMethod: payment.name,
+            paymentIcon: payment.icon
+          },
+          ...p
+        ]);
+        setScreen("home");
+      };
+
+      const fmt = n => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const valid = form.amount && form.description && selCat && selPayment;
+
+      // ── AUTH RENDER ──
+      if (!currentUser) {
+        return h("div", { style: S.authRoot },
+          h("div", { style: S.authG1 }),
+          h("div", { style: S.authG2 }),
+          h("div", { style: S.authLogo }, "💰"),
+          h("div", { style: S.authTitle }, authScreen === "login" ? "Bem-vindo" : "Criar conta"),
+          h("div", { style: S.authSub }, authScreen === "login" ? "Faça login para continuar" : "Preencha os dados abaixo"),
+          h("div", { style: S.authCard },
+            authError && h("div", { style: S.authErr }, authError),
+            authScreen === "login" ? [
+              h("label", { style: S.authLabel, key: "l1" }, "Email"),
+              h("input", {
+                style: S.authInput,
+                key: "i1",
+                type: "email",
+                placeholder: "admin@finance.com",
+                value: loginForm.email,
+                onChange: e => setLoginForm(f => ({ ...f, email: e.target.value })),
+                onKeyDown: e => e.key === "Enter" && doLogin()
+              }),
+              h("label", { style: S.authLabel, key: "l2" }, "Senha"),
+              h("input", {
+                style: S.authInput,
+                key: "i2",
+                type: "password",
+                placeholder: "••••••••",
+                value: loginForm.password,
+                onChange: e => setLoginForm(f => ({ ...f, password: e.target.value })),
+                onKeyDown: e => e.key === "Enter" && doLogin()
+              }),
+              h("button", { style: S.authBtn, key: "b1", onClick: doLogin }, "Entrar")
+            ] : [
+              h("label", { style: S.authLabel, key: "l1" }, "Nome"),
+              h("input", {
+                style: S.authInput,
+                key: "i1",
+                type: "text",
+                placeholder: "João Silva",
+                value: signupForm.name,
+                onChange: e => setSignupForm(f => ({ ...f, name: e.target.value }))
+              }),
+              h("label", { style: S.authLabel, key: "l2" }, "Email"),
+              h("input", {
+                style: S.authInput,
+                key: "i2",
+                type: "email",
+                placeholder: "joao@email.com",
+                value: signupForm.email,
+                onChange: e => setSignupForm(f => ({ ...f, email: e.target.value }))
+              }),
+              h("label", { style: S.authLabel, key: "l3" }, "Senha"),
+              h("input", {
+                style: S.authInput,
+                key: "i3",
+                type: "password",
+                placeholder: "••••••••",
+                value: signupForm.password,
+                onChange: e => setSignupForm(f => ({ ...f, password: e.target.value }))
+              }),
+              h("label", { style: S.authLabel, key: "l4" }, "Confirmar Senha"),
+              h("input", {
+                style: S.authInput,
+                key: "i4",
+                type: "password",
+                placeholder: "••••••••",
+                value: signupForm.confirmPassword,
+                onChange: e => setSignupForm(f => ({ ...f, confirmPassword: e.target.value })),
+                onKeyDown: e => e.key === "Enter" && doSignup()
+              }),
+              h("button", { style: S.authBtn, key: "b1", onClick: doSignup }, "Criar Conta")
+            ]
+          ),
+          h("div", { style: S.authSwitch },
+            authScreen === "login"
+              ? [
+                h("span", { key: "t" }, "Não tem conta? "),
+                h("button", {
+                  style: S.authSwitchBtn,
+                  key: "b",
+                  onClick: () => { setAuthScreen("signup"); setAuthError(""); }
+                }, "Criar conta")
+              ]
+              : [
+                h("span", { key: "t" }, "Já tem conta? "),
+                h("button", {
+                  style: S.authSwitchBtn,
+                  key: "b",
+                  onClick: () => { setAuthScreen("login"); setAuthError(""); }
+                }, "Entrar")
+              ]
+          )
+        );
+      }
+
+      // ── ADD RENDER ──
+      if (screen === "add") {
+        return h("div", { style: S.addOverlay },
+          h("div", { style: S.addHeader },
+            h("button", { style: S.addBack, onClick: () => setScreen("home") }, "✕"),
+            h("span", { style: S.addTitle }, "Nova transação"),
+            h("button", { style: S.addOk(valid), onClick: doAdd, disabled: !valid }, "OK")
+          ),
+          h("div", { style: S.typeToggle },
+            h("button", {
+              style: S.typeBtn(addType === "out", "#ef4444"),
+              onClick: () => setAddType("out")
+            }, "Saída"),
+            h("button", {
+              style: S.typeBtn(addType === "in", "#22c55e"),
+              onClick: () => setAddType("in")
+            }, "Entrada")
+          ),
+          h("div", { style: S.amtWrap },
+            h("span", { style: S.amtPfx }, "R$"),
+            h("input", {
+              style: S.amtInput,
+              type: "number",
+              placeholder: "0,00",
+              value: form.amount,
+              autoFocus: true,
+              onChange: e => setForm(f => ({ ...f, amount: e.target.value }))
+            })
+          ),
+          h("div", { style: S.fSection },
+            h("div", { style: S.fLabel }, "Descrição"),
+            h("input", {
+              style: S.fInput,
+              type: "text",
+              placeholder: "Ex: Supermercado",
+              value: form.description,
+              onChange: e => setForm(f => ({ ...f, description: e.target.value }))
+            })
+          ),
+          h("div", { style: S.fSection },
+            h("div", { style: S.fLabel }, "Data"),
+            h("input", {
+              style: { ...S.fInput, colorScheme: "dark" },
+              type: "date",
+              value: form.date,
+              onChange: e => setForm(f => ({ ...f, date: e.target.value }))
+            })
+          ),
+          h("div", { style: S.fSection },
+            h("div", { style: S.fLabel }, "Categoria"),
+            h("div", { style: S.catGrid },
+              cats.map(c =>
+                h("button", {
+                  key: c.name,
+                  style: S.catBtn(selCat === c.name),
+                  onClick: () => setSelCat(c.name)
+                }, c.icon + " " + c.name)
+              ),
+              h("button", {
+                style: S.addCatBtn,
+                onClick: () => setShowNewCategory(!showNewCategory)
+              }, "+ Nova")
+            ),
+            showNewCategory && h("div", { style: S.newCatModal },
+              h("div", { style: S.newCatInputWrap },
+                h("input", {
+                  style: S.newCatIconInput,
+                  type: "text",
+                  placeholder: "📌",
+                  maxLength: 2,
+                  value: newCategoryForm.icon,
+                  onChange: e => setNewCategoryForm(f => ({ ...f, icon: e.target.value }))
+                }),
+                h("input", {
+                  style: S.newCatNameInput,
+                  type: "text",
+                  placeholder: "Nome da categoria",
+                  value: newCategoryForm.name,
+                  onChange: e => setNewCategoryForm(f => ({ ...f, name: e.target.value })),
+                  onKeyDown: e => e.key === "Enter" && addNewCategory()
+                })
+              ),
+              h("div", { style: S.newCatBtnWrap },
+                h("button", {
+                  style: S.newCatSaveBtn,
+                  onClick: addNewCategory
+                }, "Adicionar"),
+                h("button", {
+                  style: S.newCatCancelBtn,
+                  onClick: () => {
+                    setShowNewCategory(false);
+                    setNewCategoryForm({ name: "", icon: "📌" });
+                  }
+                }, "Cancelar")
+              )
+            )
+          ),
+          h("div", { style: S.fSection },
+            h("div", { style: S.fLabel }, "Forma de Pagamento"),
+            h("div", { style: S.catGrid },
+              PAYMENT_METHODS.map(p =>
+                h("button", {
+                  key: p.name,
+                  style: S.catBtn(selPayment === p.name),
+                  onClick: () => setSelPayment(p.name)
+                }, p.icon + " " + p.name)
+              )
+            )
+          ),
+          h("button", {
+            style: S.subBtn(valid),
+            onClick: doAdd,
+            disabled: !valid
+          }, addType === "in" ? "+  Adicionar Entrada" : "−  Adicionar Saída")
+        );
+      }
+
+      // ── PROFILE RENDER ──
+      if (screen === "profile") {
+        const aIn = transactions.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
+        const aOut = transactions.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
+        return h("div", { style: S.root },
+          h("div", { style: S.glowA }),
+          h("div", { style: S.glowB }),
+          h("div", { style: S.profWrap },
+            h("div", { style: S.profHdr },
+              h("div", { style: S.profAvatar }, currentUser.avatar),
+              h("div", { style: S.profName }, currentUser.name),
+              h("div", { style: S.profEmail }, currentUser.email)
+            ),
+            h("div", { style: S.statsRow },
+              h("div", { style: S.statCard },
+                h("div", { style: S.statNum }, transactions.length),
+                h("div", { style: S.statLbl }, "Transações")
+              ),
+              h("div", { style: S.statCard },
+                h("div", { style: { ...S.statNum, color: "#22c55e", fontSize: 15 } }, fmt(aIn)),
+                h("div", { style: S.statLbl }, "Entradas")
+              ),
+              h("div", { style: S.statCard },
+                h("div", { style: { ...S.statNum, color: "#ef4444", fontSize: 15 } }, fmt(aOut)),
+                h("div", { style: S.statLbl }, "Saídas")
+              )
+            ),
+            h("div", { style: S.profCard },
+              h("div", { style: S.profCardTitle }, "Informações"),
+              h("div", { style: S.profRow },
+                h("span", { style: S.profRowL }, "Nome"),
+                h("span", { style: S.profRowV }, currentUser.name)
+              ),
+              h("div", { style: S.profRow },
+                h("span", { style: S.profRowL }, "Email"),
+                h("span", { style: S.profRowV }, currentUser.email)
+              ),
+              h("div", { style: S.profRow },
+                h("span", { style: S.profRowL }, "Conta criada"),
+                h("span", { style: S.profRowV }, currentUser.since)
+              )
+            ),
+            h("div", { style: S.profCard },
+              h("div", { style: S.profCardTitle }, "Relatório"),
+              h("button", {
+                style: {
+                  ...S.authBtn,
+                  background: "linear-gradient(135deg,#3b82f6,#2563eb)",
+                  boxShadow: "0 4px 18px rgba(59,130,246,0.35)",
+                  marginTop: 0
+                },
+                onClick: () => exportExcel(transactions, currentUser)
+              }, "📊  Exportar Relatório (.xlsx)")
+            ),
+            h("button", {
+              style: S.logoutBtn,
+              onClick: () => {
+                setCurrentUser(null);
+                setLoginForm({ email: "", password: "" });
+                setAuthScreen("login");
+              }
+            }, "Sair da conta")
+          ),
+          h("div", { style: S.bottomNav },
+            h("button", {
+              style: S.navBtn(false),
+              onClick: () => setScreen("home")
+            },
+              h("span", { style: S.navIcon(false) }, "🏠"),
+              "Início"
+            ),
+            h("button", { style: S.navBtn(true) },
+              h("span", { style: S.navIcon(true) }, "👤"),
+              "Perfil"
+            )
+          )
+        );
+      }
+
+      // ── HOME RENDER ──
+      return h("div", { style: S.root },
+        h("div", { style: S.glowA }),
+        h("div", { style: S.glowB }),
+        h("div", { style: S.header },
+          h("div", null,
+            h("div", { style: S.headerTitle }, "Finanças Pessoais"),
+            h("div", { style: S.headerGreet }, "Olá, " + currentUser.name.split(" ")[0] + "!")
+          ),
+          h("div", {
+            style: S.avatar,
+            onClick: () => setScreen("profile")
+          }, currentUser.avatar)
+        ),
+        h("div", { style: S.monthNav },
+          h("button", { style: S.monthArrow, onClick: goP }, "‹"),
+          h("div", { style: S.monthCenter },
+            h("div", { style: S.monthName }, MONTHS[selMonth]),
+            h("div", { style: S.monthMeta },
+              h("span", { style: S.monthYear }, selYear),
+              isCur && h("span", { style: S.monthBadge }, "Atual")
+            )
+          ),
+          h("button", {
+            style: isFut ? S.monthArrowDis : S.monthArrow,
+            onClick: isFut ? undefined : goN
+          }, "›")
+        ),
+        h("div", { style: S.balCard },
+          h("div", { style: S.balLabel }, "Saldo do mês"),
+          h("div", { style: S.balValue }, fmt(bal)),
+          h("div", { style: S.balRow },
+            h("div", { style: S.balPill("#22c55e") },
+              h("div", { style: S.pillLabel },
+                h("span", { style: S.pillDot("#22c55e") }),
+                " Entradas"
+              ),
+              h("div", { style: S.pillVal("#22c55e") }, fmt(tIn))
+            ),
+            h("div", { style: S.balPill("#ef4444") },
+              h("div", { style: S.pillLabel },
+                h("span", { style: S.pillDot("#ef4444") }),
+                " Saídas"
+              ),
+              h("div", { style: S.pillVal("#ef4444") }, fmt(tOut))
+            )
+          )
+        ),
+        h("div", { style: S.listWrap },
+          sorted.length === 0
+            ? h("div", { style: S.emptyWrap },
+              h("div", { style: S.emptyIcon }, "📭"),
+              h("div", { style: S.emptyText }, "Sem transações"),
+              h("div", { style: S.emptySub }, "Nenhuma entrada ou saída neste mês")
+            )
+            : Object.entries(grouped).map(([date, txs]) =>
+              h("div", { key: date },
+                h("div", { style: S.dateHdr }, date),
+                txs.map(t =>
+                  h("div", { key: t.id, style: S.txCard },
+                    h("div", {
+                      style: {
+                        ...S.txIcon,
+                        background: t.type === "in" ? "#22c55e10" : "#ef444410"
+                      }
+                    }, t.icon),
+                    h("div", { style: S.txInfo },
+                      h("div", { style: S.txDesc }, t.description),
+                      h("div", { style: S.txCat }, t.paymentIcon ? t.paymentIcon + " " + t.category : t.category)
+                    ),
+                    h("div", { style: S.txRight },
+                      h("div", { style: S.txSign(t.type === "in") }, t.type === "in" ? "+" : "−"),
+                      h("div", { style: S.txAmt(t.type === "in") }, fmt(t.amount))
+                    )
+                  )
+                )
+              )
+            )
+        ),
+        h("button", {
+          style: S.fab,
+          onClick: () => {
+            setAddType("out");
+            setScreen("add");
+          }
+        }, "+"),
+        h("div", { style: S.bottomNav },
+          h("button", {
+            style: S.navBtn(true),
+            onClick: () => setScreen("home")
+          },
+            h("span", { style: S.navIcon(true) }, "🏠"),
+            "Início"
+          ),
+          h("button", {
+            style: S.navBtn(false),
+            onClick: () => setScreen("profile")
+          },
+            h("span", { style: S.navIcon(false) }, "👤"),
+            "Perfil"
+          )
+        )
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+  </script>
+</body>
+
+</html>
