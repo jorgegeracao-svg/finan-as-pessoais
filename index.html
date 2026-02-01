@@ -304,8 +304,9 @@
       navBtn: a => ({ background: "none", border: "none", color: a ? "#22c55e" : "#4b5563", fontSize: 11, fontWeight: a ? 600 : 500, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }),
       navIcon: a => ({ fontSize: 20, color: a ? "#22c55e" : "#4b5563" }),
 
-      addOverlay: { position: "fixed", inset: 0, background: "#0f1117", zIndex: 20, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto" },
-      addHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "56px 24px 14px" },
+      addOverlay: { position: "fixed", inset: 0, background: "#0f1117", zIndex: 20, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto", overflowY: "auto" },
+      addContent: { flex: 1, overflowY: "auto", paddingBottom: "90px" },
+      addHeader: { position: "sticky", top: 0, background: "#0f1117", zIndex: 5, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "56px 24px 14px", borderBottom: "1px solid rgba(255,255,255,0.05)" },
       addBack: { background: "none", border: "none", color: "#6b7280", fontSize: 24, cursor: "pointer", padding: 6 },
       addTitle: { fontSize: 17, fontWeight: 700 },
       addOk: a => ({ background: "none", border: "none", color: a ? "#22c55e" : "#374151", fontSize: 15, fontWeight: 600, cursor: a ? "pointer" : "default", padding: 6 }),
@@ -327,7 +328,7 @@
       newCatBtnWrap: { display: "flex", gap: 6 },
       newCatSaveBtn: { flex: 1, padding: "8px", borderRadius: 8, border: "none", background: "#22c55e", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" },
       newCatCancelBtn: { flex: 1, padding: "8px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#6b7280", fontSize: 12, fontWeight: 600, cursor: "pointer" },
-      subBtn: a => ({ margin: "26px 24px", padding: "15px", borderRadius: 13, border: "none", background: a ? "linear-gradient(135deg,#22c55e,#16a34a)" : "#1e2028", color: a ? "#fff" : "#4b5563", fontSize: 16, fontWeight: 600, cursor: a ? "pointer" : "default", boxShadow: a ? "0 4px 18px rgba(34,197,94,0.3)" : "none" }),
+      subBtn: a => ({ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, margin: 0, padding: "16px 24px", borderRadius: 0, border: "none", background: a ? "linear-gradient(135deg,#22c55e,#16a34a)" : "#1e2028", color: a ? "#fff" : "#4b5563", fontSize: 16, fontWeight: 600, cursor: a ? "pointer" : "default", boxShadow: a ? "0 -4px 18px rgba(34,197,94,0.2)" : "none", borderTop: "1px solid rgba(255,255,255,0.08)", zIndex: 6 }),
 
       profWrap: { position: "relative", zIndex: 1, flex: 1, overflowY: "auto", padding: "0 24px 90px" },
       profHdr: { textAlign: "center", padding: "48px 0 22px" },
@@ -599,7 +600,8 @@
             h("span", { style: S.addTitle }, "Nova transação"),
             h("button", { style: S.addOk(valid), onClick: doAdd, disabled: !valid }, "OK")
           ),
-          h("div", { style: S.typeToggle },
+          h("div", { style: S.addContent },
+            h("div", { style: S.typeToggle },
             h("button", {
               style: S.typeBtn(addType === "out", "#ef4444"),
               onClick: () => setAddType("out")
